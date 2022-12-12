@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "RayTracer": {
+      "commandName": "Project",
+      "workingDirectory": "$(ProjectDir)"
+    }
+  }
+}
