@@ -37,6 +37,17 @@ internal class ShaderBuffer<T> : Buffer where T : unmanaged
 
 }
 
+internal class ConstantBuffer<T> : Buffer where T : unmanaged
+{
+    
+    public unsafe ConstantBuffer(Device device) : base(device, new BufferDescription
+    {
+        SizeInBytes = ((sizeof(T) - 1) | 15) + 1, // Nearest multiple of 16 that is larger
+        BindFlags = BindFlags.ConstantBuffer
+    }) { }
+
+}
+
 internal abstract class Renderer : IDisposable
 {
 
@@ -49,7 +60,7 @@ internal abstract class Renderer : IDisposable
     protected int height;
 
 
-    public unsafe Renderer(Window window)
+    protected unsafe Renderer(Window window, string path)
     {
         FrameworkElement content = (FrameworkElement) window.Content;
         width = (int) content.ActualWidth;
@@ -69,7 +80,7 @@ internal abstract class Renderer : IDisposable
             Usage = Usage.UnorderedAccess
         });
 
-        using CompilationResult result = ShaderBytecode.CompileFromFile("Shaders/RayTracer.hlsl", "Main", "cs_5_0");
+        using CompilationResult result = ShaderBytecode.CompileFromFile(path, "Main", "cs_5_0");
         using ComputeShader shader = new(device, result);
 
         context.ComputeShader.Set(shader);

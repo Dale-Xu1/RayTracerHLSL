@@ -6,12 +6,39 @@ struct Ray
     float3 direction;
 };
 
-struct Triangle
+StructuredBuffer<int> Input : register(t0);
+Texture2D<float4> Skybox : register(t1);
+
+RWTexture2D<float4> Result;
+
+SamplerState Sampler;
+
+float4x4 CameraToWorld;
+float4x4 InverseProjection;
+
+uint Sample;
+
+Ray InitRay(float3 position, float3 direction)
 {
-	float3 a;
-	float3 b;
-	float3 c;
-};
+	Ray ray;
+
+	ray.position = position;
+	ray.direction = direction;
+
+	return ray;
+}
+
+Ray InitCameraRay(float2 uv)
+{
+	// Transform camera origin into world space
+	float3 position = mul(CameraToWorld, float4(0, 0, 0, 1)).xyz;
+
+	// Invert perspctive projection
+	float3 direction = mul(InverseProjection, float4(uv, 0, 1)).xyz;
+	direction = mul(CameraToWorld, float4(direction, 0)).xyz; // Transform from camera to world space
+
+    return InitRay(position, normalize(direction));
+}
 
 float Hash(uint state)
 {
@@ -25,34 +52,27 @@ float Hash(uint state)
 	return state / 4294967295.0;
 }
 
-StructuredBuffer<Triangle> Input;
-RWTexture2D<float4> Result;
-
-int Width;
-int Height;
-
-uint Sample;
-
 [numthreads(8, 8, 1)]
 void Main(uint3 id : SV_DispatchThreadID)
 {
-	if ((id.x & id.y) == 0)
-	{
-		Result[id.xy] = float4(0, 0, 0, 1);
-		return;
-	}
+	uint width, height;
+	Result.GetDimensions(width, height);
 
-	int i = id.y * Width + id.x + Sample;
+	// Generate random offset for pixel
+	int i = id.y * width + id.x + Sample;
+	float2 offset = float2(Hash(i), Hash(i + 1));
 
-	float h = Hash(i + Sample);
-	float4 current = float4(h, h, h, 1);
+	// Create camera ray for current pixel
+    float2 uv = (id.xy + offset) / float2(width, height) * 2 - 1;
+	Ray ray = InitCameraRay(uv);
 
+	// Sample the skybox
+	float theta = acos(ray.direction.y) / -PI;
+	float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5;
+	
+	float4 result = pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0), 1.2) * 1.1;
+
+	// Average result with previous samples
 	float a = 1.0 / (Sample + 1);
-	Result[id.xy] = Result[id.xy] * (1 - a) + current * a;
-
-	//Result[id.xy] += float4(1, 3.0 * id.x / Width, 0.5 * id.y / Height, 0) * 0.03;
-
-	//if (Result[id.xy].r > 1.0) Result[id.xy] = float4(0, Result[id.xy].g, Result[id.xy].b, 1);
-	//if (Result[id.xy].g > 1.0) Result[id.xy] = float4(Result[id.xy].r, 0, Result[id.xy].b, 1);
-	//if (Result[id.xy].b > 1.0) Result[id.xy] = float4(Result[id.xy].r, Result[id.xy].g, 0, 1);
+	Result[id.xy] = Result[id.xy] * (1 - a) + result * a;
 }

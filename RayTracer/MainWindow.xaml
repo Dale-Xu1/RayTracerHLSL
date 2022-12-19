@@ -8,6 +8,5 @@
         Title="Ray Tracer" Height="450" Width="800"
         Loaded="OnLoad">
     <Grid x:Name="content">
-
     </Grid>
 </Window>
