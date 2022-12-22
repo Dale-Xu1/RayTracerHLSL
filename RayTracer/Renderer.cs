@@ -74,10 +74,10 @@ internal abstract class Renderer : IDisposable
         {
             ModeDescription = new ModeDescription(width, height, new Rational(60, 1), Format.R8G8B8A8_UNorm),
             BufferCount = 1,
-            IsWindowed = true,
+            Usage = Usage.UnorderedAccess,
             OutputHandle = new WindowInteropHelper(window).Handle,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = Usage.UnorderedAccess
+            IsWindowed = true,
+            SampleDescription = new SampleDescription(1, 0)
         });
 
         using CompilationResult result = ShaderBytecode.CompileFromFile(path, "Main", "cs_5_0");

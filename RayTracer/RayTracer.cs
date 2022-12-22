@@ -5,11 +5,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Media.Imaging;
 
 using SharpDX;
 using SharpDX.Direct3D11;
-using SharpDX.DXGI;
+using SharpDX.WIC;
 
 namespace RayTracer;
 
@@ -34,6 +33,18 @@ internal struct Triangle
 
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct Sphere
+{
+
+    public Vector3 Position { get; init; }
+    public float Radius { get; init; }
+
+    public Color3 Albedo { get; init; }
+    public Color3 Specular { get; init; }
+
+}
+
 internal class RayTracerRenderer : Renderer
 {
 
@@ -43,13 +54,12 @@ internal class RayTracerRenderer : Renderer
 
     public RayTracerRenderer(Window window) : base(window, "Shaders/RayTracer.hlsl")
     {
-        using ShaderBuffer<Triangle> input = new(device, 1);
+        using ShaderBuffer<Sphere> input = new(device, 3);
         context.ComputeShader.SetShaderResource(0, input.View);
 
-        Texture2D texture = TextureLoader.CreateTexture2DFromBitmap(device,
-            TextureLoader.LoadBitmap(new SharpDX.WIC.ImagingFactory2(), "cape_hill.jpg"));
+        using Texture2D skybox = TextureLoader.LoadFromFile(device, "skybox.jpg");
 
-        ShaderResourceView view = new(device, texture);
+        ShaderResourceView view = new(device, skybox);
         context.ComputeShader.SetShaderResource(1, view);
 
         // Create constant buffers
@@ -57,9 +67,23 @@ internal class RayTracerRenderer : Renderer
         context.ComputeShader.SetConstantBuffer(0, buffer);
 
         // Load data into buffers
-        context.UpdateSubresource(new Triangle[]
+        context.UpdateSubresource(new Sphere[]
         {
-            new() { A = new Vector3(0, 0, 0), B = new Vector3(0, 0, 0), C = new Vector3(0, 0, 0) }
+            new()
+            {
+                Position = new Vector3(0, 1, 0), Radius = 1,
+                Albedo = new Color3(0), Specular = new Color3(0.7f)
+            },
+            new()
+            {
+                Position = new Vector3(-3, 1, 0), Radius = 1,
+                Albedo = new Color3(0), Specular = new Color3(0.7f)
+            },
+            new()
+            {
+                Position = new Vector3(3, 1, 0), Radius = 1,
+                Albedo = new Color3(0), Specular = new Color3(0.7f)
+            }
         }, input);
 
         Init();
@@ -67,7 +91,7 @@ internal class RayTracerRenderer : Renderer
 
     private void Init()
     {
-        Matrix camera = Matrix.LookAtLH(new Vector3(0, 0, -5), Vector3.Zero, Vector3.Up);
+        Matrix camera = Matrix.LookAtLH(new Vector3(0, 2, -7), new Vector3(0, 1, 0), Vector3.Up);
         Matrix projection = Matrix.PerspectiveFovLH((float) Math.PI / 4, (float) width / height, 0.1f, 100);
 
         camera.Invert();
