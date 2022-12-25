@@ -20,7 +20,6 @@ internal readonly struct Constants
     public Matrix InverseProjection { get; init; }
 
     public uint Sample { get; init; }
-    public float Seed { get; init; }
 
 }
 
@@ -121,8 +120,7 @@ internal class RayTracerRenderer : Renderer
         constants = new Constants
         {
             CameraToWorld = camera,
-            InverseProjection = projection,
-            Seed = 0
+            InverseProjection = projection
         };
     }
 
