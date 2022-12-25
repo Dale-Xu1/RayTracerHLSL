@@ -4,7 +4,7 @@ struct Ray
 {
     float3 position;
     float3 direction;
-	float3 color;
+	float3 energy;
 };
 
 struct RayHit
@@ -31,7 +31,7 @@ Ray InitRay(float3 position, float3 direction)
 
 	ray.position = position;
 	ray.direction = direction;
-	ray.color = 1;
+	ray.energy = 1;
 
 	return ray;
 }
@@ -48,6 +48,18 @@ RayHit InitRayHit()
 	hit.specular = 0;
 
 	return hit;
+}
+
+uint HashInt(uint state)
+{
+	state ^= 2747636419u;
+	state *= 2654435769u;
+	state ^= state >> 16;
+	state *= 2654435769u;
+	state ^= state >> 16;
+	state *= 2654435769u;
+
+	return state;
 }
 
 float Hash(uint state)
@@ -73,6 +85,7 @@ float4x4 CameraToWorld;
 float4x4 InverseProjection;
 
 uint Sample;
+float Seed;
 
 Ray InitCameraRay(float2 uv)
 {
@@ -84,6 +97,30 @@ Ray InitCameraRay(float2 uv)
 	direction = mul(CameraToWorld, float4(direction, 0)).xyz; // Transform from camera to world space
 
     return InitRay(position, normalize(direction));
+}
+
+float3x3 GetTangentSpace(float3 normal)
+{
+	// Choose a helper vector for the cross product
+    float3 helper = float3(1, 0, 0);
+    if (abs(normal.x) > 0.99f) helper = float3(0, 0, 1);
+
+    // Generate vectors
+    float3 tangent = normalize(cross(normal, helper));
+    float3 binormal = normalize(cross(normal, tangent));
+    return float3x3(tangent, binormal, normal);
+}
+
+float3 SampleHemisphere(float3 normal, uint i)
+{
+	// Uniformly sample from hemisphere
+    float cosT = Hash(i + Sample * HashInt(i + Sample));
+    float sinT = sqrt(max(0.0f, 1 - cosT * cosT));
+    float phi = 2 * PI * Hash(i + Sample * HashInt(i + Sample) + 1000000);
+	
+    // Transform into world space
+    float3 direction = float3(cos(phi) * sinT, sin(phi) * sinT, cosT);
+    return mul(direction, GetTangentSpace(normal));
 }
 
 void IntersectGroundPlane(Ray ray, inout RayHit hit)
@@ -139,32 +176,39 @@ RayHit Trace(Ray ray)
 	return hit;
 }
 
-float3 Shade(inout Ray ray, RayHit hit)
+float sdot(float3 x, float3 y, float f = 1)
+{
+	return saturate(dot(x, y) * f);
+}
+
+float3 Shade(inout Ray ray, RayHit hit, uint i)
 {
 	if (hit.distance < 1.#INF)
 	{
-		// Reflct ray and multiply color with specular reflection
 		float4 light = float4(normalize(float3(0.3, -1, 0.5)), 1);
 
 		ray.position = hit.position + hit.normal * 0.001;
-		ray.direction = reflect(ray.direction, hit.normal);
-		ray.color *= hit.specular;
+		ray.direction = SampleHemisphere(hit.normal, i);
+		//ray.direction = reflect(ray.direction, hit.normal);
+		ray.energy *= 2 * hit.albedo * sdot(hit.normal, ray.direction);
+
+		return 0.0f;
 
 		// Return diffuse-shaded color
-		Ray shadowRay = InitRay(hit.position + hit.normal * 0.001, -1 * light.xyz);
-		RayHit shadowHit = Trace(shadowRay);
+		//Ray shadowRay = InitRay(hit.position + hit.normal * 0.001, -1 * light.xyz);
+		//RayHit shadowHit = Trace(shadowRay);
 
-		if (shadowHit.distance != 1.#INF) return 0;
-		return saturate(dot(hit.normal, light.xyz) * -1) * light.w * hit.albedo;
+		//if (shadowHit.distance != 1.#INF) return 0;
+		//return saturate(dot(hit.normal, light.xyz) * -1) * light.w * hit.albedo;
 	}
 
-	ray.color = 0;
+	ray.energy = 0;
 
 	// Sample the skybox
 	float theta = acos(ray.direction.y) / PI;
 	float phi = -0.5 * atan2(ray.direction.x, -ray.direction.z) / PI;
 	
-	return pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0), 1.3) * 1.12;
+	return pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0), 1.5) * 1.8;
 }
 
 [numthreads(8, 8, 1)]
@@ -172,23 +216,22 @@ void Main(uint3 id : SV_DispatchThreadID)
 {
 	uint width, height;
 	Result.GetDimensions(width, height);
-
-	// Generate random offset for pixel
-	int i = id.y * width + id.x + Sample;
-	float2 offset = float2(Hash(i), Hash(i + 1));
-
+	
 	// Create camera ray for current pixel
+	float2 offset = float2(Hash(Sample), Hash(Sample + 1));
     float2 uv = (id.xy + offset) / float2(width, height) * 2 - 1;
+	
+	uint index = id.y * width + id.x + Sample;
 	Ray ray = InitCameraRay(float2(uv.x, -uv.y));
 
 	// Trace and shade ray
 	float3 result = 0;
-	for (int i = 0; i < 8; i++)
+	for (uint i = 0; i < 8; i++)
 	{
 		RayHit hit = Trace(ray);
-		result += ray.color * Shade(ray, hit);
+		result += ray.energy * Shade(ray, hit, index + i);
 
-		if (!any(ray.color)) break;
+		if (!any(ray.energy)) break;
 	}
 
 	// Average result with previous samples

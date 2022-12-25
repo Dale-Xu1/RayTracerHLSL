@@ -13,18 +13,19 @@ using SharpDX.WIC;
 namespace RayTracer;
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct Constants
+internal readonly struct Constants
 {
 
     public Matrix CameraToWorld { get; init; }
     public Matrix InverseProjection { get; init; }
 
     public uint Sample { get; init; }
+    public float Seed { get; init; }
 
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct Triangle
+internal readonly struct Triangle
 {
 
     public Vector3 A { get; init; }
@@ -34,7 +35,7 @@ internal struct Triangle
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct Sphere
+internal readonly struct Sphere
 {
 
     public Vector3 Position { get; init; }
@@ -54,9 +55,6 @@ internal class RayTracerRenderer : Renderer
 
     public RayTracerRenderer(Window window) : base(window, "Shaders/RayTracer.hlsl")
     {
-        using ShaderBuffer<Sphere> input = new(device, 3);
-        context.ComputeShader.SetShaderResource(0, input.View);
-
         using Texture2D skybox = TextureLoader.LoadFromFile(device, "skybox.jpg");
 
         ShaderResourceView view = new(device, skybox);
@@ -66,32 +64,55 @@ internal class RayTracerRenderer : Renderer
         buffer = new ConstantBuffer<Constants>(device);
         context.ComputeShader.SetConstantBuffer(0, buffer);
 
-        // Load data into buffers
-        context.UpdateSubresource(new Sphere[]
-        {
-            new()
-            {
-                Position = new Vector3(0, 1, 0), Radius = 1,
-                Albedo = new Color3(0), Specular = new Color3(0.7f)
-            },
-            new()
-            {
-                Position = new Vector3(-3, 1, 0), Radius = 1,
-                Albedo = new Color3(0), Specular = new Color3(0.7f)
-            },
-            new()
-            {
-                Position = new Vector3(3, 1, 0), Radius = 1,
-                Albedo = new Color3(0), Specular = new Color3(0.7f)
-            }
-        }, input);
+        // Load object data
+        Random random = new(0);
+        List<Sphere> spheres = new();
 
+        for (int i = 0; i < 100; i++)
+        {
+            float radius = random.NextFloat(3, 8);
+            Vector3 position = new(random.NextFloat(-80, 80), radius, random.NextFloat(-80, 80));
+
+            foreach (Sphere sphere in spheres)
+            {
+                float min = radius + sphere.Radius;
+                if ((sphere.Position - position).LengthSquared() < min * min) goto Skip;
+            }
+
+            Color3 color = new(random.NextFloat(0, 1), random.NextFloat(0, 1), random.NextFloat(0, 1));
+            Color3 albedo;
+            Color3 specular;
+
+            //if (random.NextFloat(0, 1) < 0.5)
+            //{
+            //    albedo = Vector3.Zero;
+            //    specular = color;
+            //}
+            //else
+            //{
+                albedo = color;
+                specular = new Vector3(0.04f, 0.04f, 0.04f);
+            //}
+
+            spheres.Add(new()
+            {
+                Position = position, Radius = radius,
+                Albedo = albedo, Specular = specular
+            });
+
+        Skip:;
+        }
+
+        using ShaderBuffer<Sphere> input = new(device, spheres.Count);
+        context.ComputeShader.SetShaderResource(0, input.View);
+
+        context.UpdateSubresource(spheres.ToArray(), input);
         Init();
     }
 
     private void Init()
     {
-        Matrix camera = Matrix.LookAtLH(new Vector3(0, 2, -7), new Vector3(0, 1, 0), Vector3.Up);
+        Matrix camera = Matrix.LookAtLH(new Vector3(120, 30, -120), new Vector3(0, 1, 0), Vector3.Up);
         Matrix projection = Matrix.PerspectiveFovLH((float) Math.PI / 4, (float) width / height, 0.1f, 100);
 
         camera.Invert();
@@ -100,7 +121,8 @@ internal class RayTracerRenderer : Renderer
         constants = new Constants
         {
             CameraToWorld = camera,
-            InverseProjection = projection
+            InverseProjection = projection,
+            Seed = 0
         };
     }
 
