@@ -64,13 +64,13 @@ internal class RayTracerRenderer : Renderer
         context.ComputeShader.SetConstantBuffer(0, buffer);
 
         // Load object data
-        Random random = new(0);
+        Random random = new(3);
         List<Sphere> spheres = new();
 
         for (int i = 0; i < 100; i++)
         {
-            float radius = random.NextFloat(3, 8);
-            Vector3 position = new(random.NextFloat(-80, 80), radius, random.NextFloat(-80, 80));
+            float radius = random.NextFloat(2, 12);
+            Vector3 position = new(random.NextFloat(-50, 50), radius, random.NextFloat(-50, 50));
 
             foreach (Sphere sphere in spheres)
             {
@@ -79,19 +79,18 @@ internal class RayTracerRenderer : Renderer
             }
 
             Color3 color = new(random.NextFloat(0, 1), random.NextFloat(0, 1), random.NextFloat(0, 1));
-            Color3 albedo;
-            Color3 specular;
+            Color3 albedo, specular;
 
-            //if (random.NextFloat(0, 1) < 0.5)
-            //{
-            //    albedo = Vector3.Zero;
-            //    specular = color;
-            //}
-            //else
-            //{
+            if (random.NextFloat(0, 1) < 0.5)
+            {
+                albedo = Vector3.Zero;
+                specular = color;
+            }
+            else
+            {
                 albedo = color;
                 specular = new Vector3(0.04f, 0.04f, 0.04f);
-            //}
+            }
 
             spheres.Add(new()
             {
@@ -111,7 +110,7 @@ internal class RayTracerRenderer : Renderer
 
     private void Init()
     {
-        Matrix camera = Matrix.LookAtLH(new Vector3(120, 30, -120), new Vector3(0, 1, 0), Vector3.Up);
+        Matrix camera = Matrix.LookAtLH(new Vector3(80, 30, -80), new Vector3(0, 1, 0), Vector3.Up);
         Matrix projection = Matrix.PerspectiveFovLH((float) Math.PI / 4, (float) width / height, 0.1f, 100);
 
         camera.Invert();

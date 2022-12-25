@@ -1,6 +1,25 @@
 ﻿static const float PI = 3.1415926535;
 static const float EPSILON = 0.001;
 
+struct Material
+{
+	float3 albedo;
+	float3 specular;
+	float3 emission;
+	
+
+	static Material New(float3 albedo, float3 specular, float3 emission = 0)
+	{
+		Material material;
+
+		material.albedo = albedo;
+		material.specular = specular;
+		material.emission = emission;
+
+		return material;
+	}
+};
+
 struct Sphere
 {
 	float3 position;
@@ -54,11 +73,9 @@ struct Intersection
 {
 	float3 position;
 	float distance;
-
 	float3 normal;
 
-	float3 albedo;
-	float3 specular;
+	Material material;
 	
 
 	static Intersection New()
@@ -83,9 +100,7 @@ Intersection IntersectGroundPlane(Ray ray)
 	intersection.position = ray.position + t * ray.direction;
 	intersection.normal = float3(0, 1, 0);
 
-	intersection.albedo = 0.8;
-	intersection.specular = 0.03;
-
+	intersection.material = Material::New(0.9, 0.03);
 	return intersection;
 }
 
@@ -111,9 +126,7 @@ Intersection IntersectSphere(Ray ray, in Sphere sphere)
     intersection.position = position;
     intersection.normal = normalize(position - sphere.position);
 
-	intersection.albedo = sphere.albedo;
-	intersection.specular = sphere.specular;
-
+	intersection.material = Material::New(sphere.albedo, sphere.specular);
 	return intersection;
 }
 
@@ -172,7 +185,7 @@ void Main(uint3 id : SV_DispatchThreadID)
 	float2 seed = id.xy / float2(width, height) + Sample;
 	
 	// Create camera ray for current pixel
-	float2 offset = float2(Random(seed), Random(seed + EPSILON));
+	float2 offset = float2(Random(seed), Random(seed + 1));
     float2 uv = (id.xy + offset) / float2(width, height) * 2 - 1;
 
 	Ray ray = Ray::Camera(float2(uv.x, -uv.y));
@@ -184,10 +197,23 @@ void Main(uint3 id : SV_DispatchThreadID)
 		Intersection intersection = Trace(ray);
 		if (intersection.distance < 1.#INF)
 		{
+			Material material = intersection.material;
+
 			ray.position = intersection.position + intersection.normal * EPSILON;
+
+			float3 reflected = reflect(ray.direction, intersection.normal);
 			ray.direction = SampleHemisphere(intersection.normal, seed + i);
-			
-			light *= 2 * intersection.albedo * dot(intersection.normal, ray.direction);
+
+			float3 diffuse = 2 * min(1 - material.specular, material.albedo);
+			float alpha = 15;
+
+			float3 specular = material.specular * (alpha + 2) * pow(saturate(dot(ray.direction, reflected)), alpha);
+			light *= (diffuse + specular) * dot(intersection.normal, ray.direction);
+
+			//ray.direction = SampleHemisphere(intersection.normal, seed + i);
+
+			//light *= 2 * material.albedo * dot(intersection.normal, ray.direction);
+			//result += light * material.emission;
 
 			if (any(light)) continue;
 			else break;
@@ -196,7 +222,7 @@ void Main(uint3 id : SV_DispatchThreadID)
 		// Sample the skybox
 		float theta = acos(ray.direction.y) / PI;
 		float phi = -0.5 * atan2(ray.direction.x, -ray.direction.z) / PI;
-	
+		
 		result += light * pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0), 2) * 1.8;
 		break;
 	}
