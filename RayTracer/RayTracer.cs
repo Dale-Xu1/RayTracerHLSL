@@ -24,12 +24,27 @@ internal readonly struct Constants
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal readonly struct Material
+{
+
+    public Color3 Albedo { get; init; }
+
+    public Color3 Specular { get; init; }
+    public float Roughness { get; init; }
+
+    public Color3 Emission { get; init; }
+
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal readonly struct Triangle
 {
 
     public Vector3 A { get; init; }
     public Vector3 B { get; init; }
     public Vector3 C { get; init; }
+
+    public Material Material { get; init; }
 
 }
 
@@ -40,8 +55,7 @@ internal readonly struct Sphere
     public Vector3 Position { get; init; }
     public float Radius { get; init; }
 
-    public Color3 Albedo { get; init; }
-    public Color3 Specular { get; init; }
+    public Material Material { get; init; }
 
 }
 
@@ -64,7 +78,7 @@ internal class RayTracerRenderer : Renderer
         context.ComputeShader.SetConstantBuffer(0, buffer);
 
         // Load object data
-        Random random = new(3);
+        Random random = new(2);
         List<Sphere> spheres = new();
 
         for (int i = 0; i < 100; i++)
@@ -95,7 +109,11 @@ internal class RayTracerRenderer : Renderer
             spheres.Add(new()
             {
                 Position = position, Radius = radius,
-                Albedo = albedo, Specular = specular
+                Material = new()
+                {
+                    Albedo = albedo, Specular = specular,
+                    Roughness = random.NextFloat(0, 0.6f)
+                }
             });
 
         Skip:;

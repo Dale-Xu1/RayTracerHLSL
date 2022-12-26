@@ -4,16 +4,20 @@ static const float EPSILON = 0.001;
 struct Material
 {
 	float3 albedo;
+
 	float3 specular;
+	float roughness;
+
 	float3 emission;
 	
 
-	static Material New(float3 albedo, float3 specular, float3 emission = 0)
+	static Material New(float3 albedo, float3 specular, float roughness = 0.5, float3 emission = 0)
 	{
 		Material material;
 
 		material.albedo = albedo;
 		material.specular = specular;
+		material.roughness = roughness;
 		material.emission = emission;
 
 		return material;
@@ -25,8 +29,7 @@ struct Sphere
 	float3 position;
 	float radius;
 
-	float3 albedo;
-	float3 specular;
+	Material material;
 };
 
 StructuredBuffer<Sphere> Spheres : register(t0);
@@ -100,7 +103,7 @@ Intersection IntersectGroundPlane(Ray ray)
 	intersection.position = ray.position + t * ray.direction;
 	intersection.normal = float3(0, 1, 0);
 
-	intersection.material = Material::New(0.9, 0.03);
+	intersection.material = Material::New(0.9, 0.04);
 	return intersection;
 }
 
@@ -126,7 +129,7 @@ Intersection IntersectSphere(Ray ray, in Sphere sphere)
     intersection.position = position;
     intersection.normal = normalize(position - sphere.position);
 
-	intersection.material = Material::New(sphere.albedo, sphere.specular);
+	intersection.material = sphere.material;
 	return intersection;
 }
 
@@ -136,7 +139,7 @@ float Random(float2 seed)
 	return frac(sin(dot(seed, float2(12.9898, 78.233))) * 43758.5453);
 }
 
-float3 SampleHemisphere(float3 normal, float2 seed)
+float3 SampleHemisphere(float3 normal, float alpha, float2 seed)
 {	
     // Generate transformation matrix based on normal vector
     float3 helper = float3(1, 0, 0);
@@ -148,7 +151,7 @@ float3 SampleHemisphere(float3 normal, float2 seed)
     float3x3 transform = float3x3(tangent, binormal, normal);
 	
 	// Uniformly sample from hemisphere
-    float c = Random(seed);
+    float c = pow(Random(seed), 1 / (alpha + 1));
     float s = sqrt(1 - c * c);
     float p = 2 * PI * Random(seed + EPSILON);
 
@@ -172,6 +175,11 @@ Intersection Trace(Ray ray)
 	}
 
 	return min;
+}
+
+float energy(float3 color)
+{
+    return dot(color, 1 / float(3));
 }
 
 SamplerState Sampler;
@@ -200,19 +208,61 @@ void Main(uint3 id : SV_DispatchThreadID)
 			Material material = intersection.material;
 
 			ray.position = intersection.position + intersection.normal * EPSILON;
+			
+			// Janky shadow code
+			//float3 lightDirection = -normalize(float3(0.3, -1, 0.5));
+			//Ray shadowRay = Ray::New(intersection.position + intersection.normal * EPSILON, lightDirection);
+			//Intersection shadowIntersection = Trace(shadowRay);
 
-			float3 reflected = reflect(ray.direction, intersection.normal);
-			ray.direction = SampleHemisphere(intersection.normal, seed + i);
+			//float shadow = 1 * dot(intersection.normal, lightDirection);
+			//if (shadowIntersection.distance < 1.#INF) shadow = 0;
 
-			float3 diffuse = 2 * min(1 - material.specular, material.albedo);
-			float alpha = 15;
+			//float shadow = 0;
 
-			float3 specular = material.specular * (alpha + 2) * pow(saturate(dot(ray.direction, reflected)), alpha);
-			light *= (diffuse + specular) * dot(intersection.normal, ray.direction);
 
-			//ray.direction = SampleHemisphere(intersection.normal, seed + i);
+			//float3 reflected = reflect(ray.direction, intersection.normal);
+			//ray.direction = SampleHemisphere(intersection.normal, 0, seed + i);
 
-			//light *= 2 * material.albedo * dot(intersection.normal, ray.direction);
+			//float3 diffuse = 2 * min(1 - material.specular, material.albedo);
+			//float alpha = 15;
+
+			//float3 specular = material.specular * (alpha + 2) * pow(saturate(dot(ray.direction, reflected)), alpha);
+			//light *= (diffuse + specular + shadow) * dot(intersection.normal, ray.direction);
+
+			
+			material.albedo = min(1 - material.specular, material.albedo);
+
+			float specChance = energy(material.specular);
+			float diffChance = energy(material.albedo);
+			float sum = specChance + diffChance;
+
+			specChance /= sum;
+			diffChance /= sum;
+
+			if (Random(seed + i - 0.01) < specChance)
+			{
+				if (material.roughness == 0) ray.direction = reflect(ray.direction, intersection.normal);
+				else
+				{
+					float alpha = 2 / pow(material.roughness, 4) - 2;
+					float f = (alpha + 2) / (alpha + 1);
+
+					ray.direction = SampleHemisphere(reflect(ray.direction, intersection.normal), alpha, seed + i);
+					light *= f;
+				}
+
+				light *= (1 / specChance) * material.specular;
+			}
+			else
+			{
+				ray.direction = SampleHemisphere(intersection.normal, 1, seed + i);
+				light *= (1 / diffChance) * material.albedo;
+			}
+
+
+			//ray.direction = SampleHemisphere(intersection.normal, 1, seed + i);
+			
+			//light *= material.albedo;
 			//result += light * material.emission;
 
 			if (any(light)) continue;
