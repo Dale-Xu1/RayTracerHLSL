@@ -177,6 +177,11 @@ Intersection Trace(Ray ray)
 	return min;
 }
 
+float energy(float3 color)
+{
+    return dot(color, 1 / float(3));
+}
+
 SamplerState Sampler;
 
 [numthreads(8, 8, 1)]
@@ -202,54 +207,65 @@ void Main(uint3 id : SV_DispatchThreadID)
 		{
 			Material material = intersection.material;
 
-			// Make sure new ray does not intersect current object
-			float3 position = intersection.position + intersection.normal * EPSILON;
-			float3 direction;
+			ray.position = intersection.position + intersection.normal * EPSILON;
+			
+			// Janky shadow code
+			//float3 lightDirection = -normalize(float3(0.3, -1, 0.5));
+			//Ray shadowRay = Ray::New(intersection.position + intersection.normal * EPSILON, lightDirection);
+			//Intersection shadowIntersection = Trace(shadowRay);
 
-			// Evaluate first term of the rendering equation
+			//float shadow = 1 * dot(intersection.normal, lightDirection);
+			//if (shadowIntersection.distance < 1.#INF) shadow = 0;
+
+			//float shadow = 0;
+
+
+			//float3 reflected = reflect(ray.direction, intersection.normal);
+			//ray.direction = RandomHemisphere(intersection.normal, 0, seed + i);
+
+			//float3 diffuse = 2 * min(1 - material.specular, material.albedo);
+			//float alpha = 15;
+
+			//float3 specular = material.specular * (alpha + 2) * pow(saturate(dot(ray.direction, reflected)), alpha);
+			//light *= (diffuse + specular + shadow) * dot(intersection.normal, ray.direction);
+
+			
 			result += light * material.emission;
 
-			float specular = dot(material.specular, 1.0 / 3);
-			float diffuse = dot(material.albedo, 1.0 / 3);
+			float specular = energy(material.specular);
+			float diffuse = energy(material.albedo);
 
 			float total = specular + diffuse;
 			specular /= total;
 			diffuse /= total;
-
-			float random = Random(seed + i);
-			if (random < specular)
+			
+			if (Random(seed + i - 0.01) < specular)
 			{
-				if (material.roughness == 0) direction = reflect(ray.direction, intersection.normal);
+				if (material.roughness == 0) ray.direction = reflect(ray.direction, intersection.normal);
 				else
 				{
 					float alpha = 2 / pow(material.roughness, 4) - 2;
 					float f = (alpha + 2) / (alpha + 1);
 
-					direction = RandomHemisphere(reflect(ray.direction, intersection.normal), alpha, seed + i);
+					ray.direction = RandomHemisphere(reflect(ray.direction, intersection.normal), alpha, seed + i);
 					light *= f;
 				}
 
 				light *= material.specular / specular;
 			}
-			else if (random < specular + diffuse)
+			else if (diffuse > 0)
 			{
-				// Janky shadow code
-				float3 lightDirection = RandomHemisphere(normalize(float3(0.4, 1, 0.8)), 1600, seed + i);
-				Ray shadowRay = Ray::New(position, lightDirection);
-				Intersection shadowIntersection = Trace(shadowRay);
-
-				float3 shadow = 0.3 * dot(intersection.normal, lightDirection);
-				if (shadowIntersection.distance < 1.#INF) shadow = 0;
-
-				result += light * shadow;
-
-				direction = RandomHemisphere(intersection.normal, 1, seed + i);
+				ray.direction = RandomHemisphere(intersection.normal, 1, seed + i);
 				light *= material.albedo / diffuse;
 			}
 			else light = 0;
-			
-			ray = Ray::New(position, direction);
 
+
+			//ray.direction = RandomHemisphere(intersection.normal, 1, seed + i);
+			
+			//result += light * material.emission;
+			//light *= material.albedo;
+			
 			if (any(light)) continue;
 			else break;
 		}

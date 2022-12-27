@@ -93,17 +93,26 @@ internal class RayTracerRenderer : Renderer
             }
 
             Color3 color = new(random.NextFloat(0, 1), random.NextFloat(0, 1), random.NextFloat(0, 1));
-            Color3 albedo, specular;
+            Color3 albedo, specular, emission;
 
-            if (random.NextFloat(0, 1) < 0.5)
-            {
-                albedo = Vector3.Zero;
-                specular = color;
-            }
-            else
+            float r = random.NextFloat(0, 1);
+            if (r < 0.5)
             {
                 albedo = color;
                 specular = new Vector3(0.04f, 0.04f, 0.04f);
+                emission = Vector3.Zero;
+            }
+            else if (r < 0.9)
+            {
+                albedo = Vector3.Zero;
+                specular = color;
+                emission = Vector3.Zero;
+            }
+            else
+            {
+                albedo = Vector3.Zero;
+                specular = Vector3.Zero;
+                emission = new Vector3(1.5f, 1.5f, 1.5f);
             }
 
             spheres.Add(new()
@@ -112,7 +121,8 @@ internal class RayTracerRenderer : Renderer
                 Material = new()
                 {
                     Albedo = albedo, Specular = specular,
-                    Roughness = random.NextFloat(0, 0.6f)
+                    Roughness = random.NextFloat(0, 0.6f),
+                    Emission = emission
                 }
             });
 
