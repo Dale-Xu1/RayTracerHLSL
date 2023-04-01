@@ -8,6 +8,7 @@ using System.Windows;
 using RayTracer.DirectX;
 
 using SharpDX;
+using SharpDX.DXGI;
 
 namespace RayTracer;
 
@@ -66,26 +67,40 @@ internal class RayTracerRenderer : ComputeRenderer
     private readonly ConstantBuffer<Constants> buffer;
     private Constants constants;
 
+    private readonly ComputeShader renderer;
+    private readonly ComputeShader accumulate;
+
 
     public RayTracerRenderer(Window window, int width, int height) : base(window, width, height)
     {
-        using ComputeShader shader = Compile("RayTracer.hlsl");
-        context.ComputeShader.Set(shader);
+        renderer = Compile("RayTracer.hlsl");
+        accumulate = Compile("Accumulate.hlsl");
 
+        // Import skybox texture from files
         using ShaderResourceTexture skybox = ShaderResourceTexture.FromFile(device, "skybox.jpg");
         context.ComputeShader.SetShaderResource(1, skybox.View);
 
-        // Create constant buffers
+        // Separate texture for ray tracer to render to
+        using UnorderedAccessTexture render = new(device, width, height, Format.R16G16B16A16_Float);
+        context.ComputeShader.SetUnorderedAccessView(1, render.View);
+
+        // Create constant buffer
         buffer = new ConstantBuffer<Constants>(device);
         context.ComputeShader.SetConstantBuffer(0, buffer);
 
-        // Load object data
-        Random random = new(2);
+        LoadSceneData();
+        Init();
+    }
+
+    private void LoadSceneData()
+    {
+        // Generate random spheres
+        Random random = new(0);
         List<Sphere> spheres = new();
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 200; i++)
         {
-            float radius = random.NextFloat(2, 12);
+            float radius = random.NextFloat(1, 10);
             Vector3 position = new(random.NextFloat(-50, 50), radius, random.NextFloat(-50, 50));
 
             foreach (Sphere sphere in spheres)
@@ -119,7 +134,6 @@ internal class RayTracerRenderer : ComputeRenderer
         context.ComputeShader.SetShaderResource(0, input.View);
 
         context.UpdateSubresource(spheres.ToArray(), input);
-        Init();
     }
 
     private void Init()
@@ -137,18 +151,14 @@ internal class RayTracerRenderer : ComputeRenderer
         };
     }
 
-    public override void Resize(int width, int height)
-    {
-        base.Resize(width, height);
-
-        sample = 0;
-        Init();
-    }
-
     public new void Dispose()
     {
         base.Dispose();
+
         buffer.Dispose();
+
+        renderer.Dispose();
+        accumulate.Dispose();
     }
 
 
@@ -158,7 +168,12 @@ internal class RayTracerRenderer : ComputeRenderer
         constants = constants with { Sample = sample++ };
         context.UpdateSubresource(ref constants, buffer);
 
+        context.ComputeShader.Set(renderer);
         context.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+
+        context.ComputeShader.Set(accumulate);
+        context.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+
         base.Render();
     }
 

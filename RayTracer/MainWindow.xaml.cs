@@ -18,8 +18,6 @@ namespace RayTracer;
 public partial class MainWindow : Window
 {
 
-    private RayTracerRenderer renderer = null!;
-
     private readonly int width = 800;
     private readonly int height = 450;
 
@@ -35,16 +33,8 @@ public partial class MainWindow : Window
 
     private void Start(object sender, RoutedEventArgs e)
     {
-        renderer = new RayTracerRenderer(this, width, height);
+        RayTracerRenderer renderer = new(this, width, height);
         CompositionTarget.Rendering += (object? sender, EventArgs e) => renderer.Render();
-    }
-
-    private void Resize(object sender, SizeChangedEventArgs e)
-    {
-        if (renderer is null) return; 
-        
-        int width = (int) content.ActualWidth, height = (int) content.ActualHeight;
-        renderer.Resize(width, height);
     }
 
 }

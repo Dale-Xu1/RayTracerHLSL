@@ -24,8 +24,8 @@ internal abstract class ComputeRenderer : IDisposable
     protected readonly DeviceContext context;
     private readonly SwapChain swapChain;
 
-    protected int width;
-    protected int height;
+    protected readonly int width;
+    protected readonly int height;
 
 
     protected ComputeRenderer(Window window, int width, int height)
@@ -56,15 +56,6 @@ internal abstract class ComputeRenderer : IDisposable
         using UnorderedAccessView output = new(device, backBuffer);
 
         context.ComputeShader.SetUnorderedAccessView(0, output);
-    }
-
-    public virtual void Resize(int width, int height)
-    {
-        this.width = width;
-        this.height = height;
-
-        swapChain.ResizeBuffers(1, width, height, Format.R8G8B8A8_UNorm, SwapChainFlags.None);
-        BindViews();
     }
 
     public void Dispose()

@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:RayTracer"
         mc:Ignorable="d"
-        Title="Ray Tracer" Loaded="Start" SizeChanged="Resize">
+        Title="Ray Tracer" Loaded="Start">
     <Grid x:Name="content">
     </Grid>
 </Window>
