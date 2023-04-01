@@ -5,15 +5,20 @@ static const uint LIGHT_BOUNCES = 8;
 static const float PI = 3.1415926535;
 static const float EPSILON = 0.001;
 
-StructuredBuffer<Sphere> Spheres : register(t0);
-Texture2D<float4> Skybox : register(t1);
+struct CameraParams
+{
+    float4x4 toWorld;
+    float4x4 inverseProjection;
 
+    float aperture;
+    float distance;
+};
+
+StructuredBuffer<Sphere> Spheres : register(t0);
 RWTexture2D<float4> Render : register(u1);
 
-float4x4 CameraToWorld;
-float4x4 InverseProjection;
-
 uint Sample;
+CameraParams Camera;
 
 static uint NextState(uint state) { return state * 747796405 + 2891336453; }
 float Random(inout uint state)
@@ -24,6 +29,14 @@ float Random(inout uint state)
 	result = (result >> 22) ^ result;
 	
 	return result / 4294967295.0;
+}
+
+float2 RandomCircle(float radius, inout uint state)
+{
+	float r = radius * sqrt(Random(state));
+	float a = Random(state) * 2 * PI;
+	
+	return float2(r * cos(a), r * sin(a));
 }
 
 float3 RandomHemisphere(float3 normal, float alpha, inout uint state)
@@ -79,26 +92,36 @@ Ray BRDF(Ray ray, Intersection intersection, inout uint state)
 }
 
 
-Ray CameraRay(float2 uv)
+Ray CameraRay(float2 uv, inout uint state)
 {
 	// Transform camera origin into world space
-    float3 position = mul(CameraToWorld, float4(0, 0, 0, 1)).xyz;
+    float3 offset = float3(RandomCircle(Camera.aperture, state), 0); // Randomly sample within aperture
+    float3 position = mul(Camera.toWorld, float4(offset, 1)).xyz;
 
 	// Invert perspctive projection
-    float3 direction = mul(InverseProjection, float4(uv, 0, 1)).xyz;
-    direction = mul(CameraToWorld, float4(direction, 0)).xyz; // Transform from camera to world space
+    float3 direction = mul(Camera.inverseProjection, float4(uv, 0, 1)).xyz;
+	
+    direction = normalize(direction) * Camera.distance - offset; // Reorient direction on focal plane
+    direction = mul(Camera.toWorld, float4(direction, 0)).xyz; // Transform from camera to world space
 
     return Ray::New(position, normalize(direction));
 }
 
-SamplerState Sampler;
-float3 SampleSkybox(float3 direction)
+float3 SampleSkybox(Ray ray)
 {
-	// Sample skybox
-    float theta = acos(direction.y) / PI;
-    float phi = -0.5 * atan2(direction.x, -direction.z) / PI;
+	// Don't look at this please
+    float3 direction = ray.direction;
 	
-    return pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0).rgb, 3) * 4;
+    float3 horizon = float3(1, 1, 1), zenith = float3(120, 170, 247) / 255;
+	float3 sunDir = normalize(float3(-2, -2, -5));
+	float focus = 80, intensity = 1000;
+	
+	float t = pow(smoothstep(0, 0.4, direction.y), 0.35);
+	float3 gradient = lerp(horizon, zenith, t);
+	
+    float sun = pow(max(0, dot(direction, -sunDir)), focus) * intensity;
+	
+	return (gradient + sun) * 1.5;
 }
 
 [numthreads(8, 8, 1)]
@@ -114,7 +137,7 @@ void Main(uint3 id : SV_DispatchThreadID)
     float2 offset = float2(Random(state), Random(state));
     float2 uv = (id.xy + offset) / float2(width, height) * 2 - 1;
 	
-    Ray ray = CameraRay(float2(uv.x, -uv.y));
+    Ray ray = CameraRay(float2(uv.x, -uv.y), state);
 
 	// Trace ray
 	float3 result = 0, light = 1;
@@ -135,7 +158,7 @@ void Main(uint3 id : SV_DispatchThreadID)
 		else
         {
 			// Sample skybox
-            result += light * SampleSkybox(ray.direction);
+            result += light * SampleSkybox(ray);
             break;
         }
 	}

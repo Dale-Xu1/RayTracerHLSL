@@ -15,9 +15,6 @@ static const float3x3 ACESOutput =
 RWTexture2D<float4> Render : register(u1);
 RWTexture2D<float4> Result : register(u0);
 
-float4x4 CameraToWorld;
-float4x4 InverseProjection;
-
 uint Sample;
 
 float3 RRTAndODT(float3 v)
@@ -40,7 +37,7 @@ float3 HillACES(float3 color)
 [numthreads(8, 8, 1)]
 void Main(uint3 id : SV_DispatchThreadID)
 {
-    // HDR tonemap
+    // HDR tone mapping
     float3 render = HillACES(Render[id.xy].rgb);
  
 	// Average result with previous samples   

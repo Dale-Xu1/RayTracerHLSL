@@ -18,10 +18,22 @@ using SharpDX.Direct3D11;
 internal readonly struct Constants
 {
 
-    public Matrix CameraToWorld { get; init; }
+    public uint Sample { get; init; }
+    private readonly Vector3 padding;
+
+    public Camera Camera { get; init; }
+
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct Camera
+{
+
+    public Matrix ToWorld { get; init; }
     public Matrix InverseProjection { get; init; }
 
-    public uint Sample { get; init; }
+    public float Aperture { get; init; }
+    public float Distance { get; init; }
 
 }
 
@@ -76,10 +88,6 @@ internal class RayTracerRenderer : ComputeRenderer
         renderer = Compile("RayTracer.hlsl");
         accumulate = Compile("Accumulate.hlsl");
 
-        // Import skybox texture from files
-        using ShaderResourceTexture skybox = ShaderResourceTexture.FromFile(device, "skybox.jpg");
-        context.ComputeShader.SetShaderResource(1, skybox.View);
-
         // Separate texture for ray tracer to render to
         using UnorderedAccessTexture render = new(device, width, height, Format.R16G16B16A16_Float);
         context.ComputeShader.SetUnorderedAccessView(1, render.View);
@@ -120,7 +128,7 @@ internal class RayTracerRenderer : ComputeRenderer
             {
                 albedo = Vector3.Zero;
                 specular = Vector3.Zero;
-                emission = Vector3.One * 50;
+                emission = Vector3.One * 100;
             }
 
             spheres.Add(new()
@@ -145,17 +153,21 @@ internal class RayTracerRenderer : ComputeRenderer
 
     private void Init()
     {
-        Matrix camera = Matrix.LookAtLH(new Vector3(80, 30, -80), new Vector3(0, 1, 0), Vector3.Up);
+        Vector3 position = new(80, 30, -80), target = new(0, 5, 0);
+
+        Matrix toWorld = Matrix.LookAtLH(position, target, Vector3.Up);
         Matrix projection = Matrix.PerspectiveFovLH((float) Math.PI / 4, (float) width / height, 0.1f, 100);
 
-        camera.Invert();
+        toWorld.Invert();
         projection.Invert();
 
-        constants = new Constants
+        Camera camera = new()
         {
-            CameraToWorld = camera,
-            InverseProjection = projection
+            ToWorld = toWorld, InverseProjection = projection,
+            Aperture = 2,
+            Distance = Vector3.Distance(position, target)
         };
+        constants = new Constants { Camera = camera };
     }
 
     public new void Dispose()
@@ -175,6 +187,7 @@ internal class RayTracerRenderer : ComputeRenderer
         constants = constants with { Sample = sample++ };
         context.UpdateSubresource(ref constants, buffer);
 
+        // Dispatch shaders
         context.ComputeShader.Set(renderer);
         context.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
 
