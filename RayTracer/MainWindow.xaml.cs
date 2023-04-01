@@ -20,19 +20,29 @@ public partial class MainWindow : Window
 
     private RayTracerRenderer renderer = null!;
 
-    public MainWindow() => InitializeComponent();
+    private readonly int width = 800;
+    private readonly int height = 450;
 
-
-    private void OnLoad(object sender, RoutedEventArgs e)
+    public MainWindow()
     {
-        renderer = new RayTracerRenderer(this);
+        Width = width + 2 * SystemParameters.ResizeFrameVerticalBorderWidth;
+        Height = height + SystemParameters.CaptionHeight +
+            2 * SystemParameters.ResizeFrameHorizontalBorderHeight;
 
-        SizeChanged += OnResize;
+        InitializeComponent();
+    }
+
+
+    private void Start(object sender, RoutedEventArgs e)
+    {
+        renderer = new RayTracerRenderer(this, width, height);
         CompositionTarget.Rendering += (object? sender, EventArgs e) => renderer.Render();
     }
 
-    private void OnResize(object sender, SizeChangedEventArgs e)
+    private void Resize(object sender, SizeChangedEventArgs e)
     {
+        if (renderer is null) return; 
+        
         int width = (int) content.ActualWidth, height = (int) content.ActualHeight;
         renderer.Resize(width, height);
     }

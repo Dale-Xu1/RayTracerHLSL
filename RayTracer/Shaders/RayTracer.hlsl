@@ -1,5 +1,4 @@
 ﻿static const float PI = 3.1415926535;
-static const float E = 2.7182818284;
 static const float EPSILON = 0.001;
 
 struct Material
@@ -135,12 +134,18 @@ Intersection IntersectSphere(Ray ray, in Sphere sphere)
 }
 
 
-float Random(float2 seed)
+uint NextState(uint state) { return state * 747796405 + 2891336453; }
+float Random(inout uint state)
 {
-	return frac(sin(dot(seed, float2(12.9898, 78.233))) * 43758.5453);
+	state = NextState(state);
+
+	uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+	result = (result >> 22) ^ result;
+	
+	return result / 4294967295.0;
 }
 
-float3 RandomHemisphere(float3 normal, float alpha, float2 seed)
+float3 RandomHemisphere(float3 normal, float alpha, inout uint state)
 {	
     // Generate transformation matrix based on normal vector
     float3 helper = float3(1, 0, 0);
@@ -152,9 +157,9 @@ float3 RandomHemisphere(float3 normal, float alpha, float2 seed)
     float3x3 transform = float3x3(tangent, binormal, normal);
 	
 	// Uniformly sample from hemisphere
-    float c = pow(Random(seed), 1 / (alpha + 1));
+    float c = pow(Random(state), 1 / (alpha + 1));
     float s = sqrt(1 - c * c);
-    float p = 2 * PI * Random(seed + EPSILON);
+    float p = 2 * PI * Random(state);
 
     // Transform random direction into world space
     float3 direction = float3(cos(p) * s, sin(p) * s, c);
@@ -185,13 +190,14 @@ void Main(uint3 id : SV_DispatchThreadID)
 {
 	uint width, height;
 	Result.GetDimensions(width, height);
-
-	float2 seed = id.xy / float2(width, height) + Sample;
 	
-	// Create camera ray for current pixel
-	float2 offset = float2(Random(seed), Random(seed + 1));
+	// Calculate seed based on pixel position and time
+	uint state = id.y * width + id.x + NextState(Sample);
+	
+	// Create camera ray for given uv coordinate
+    float2 offset = float2(Random(state), Random(state));
     float2 uv = (id.xy + offset) / float2(width, height) * 2 - 1;
-
+	
 	Ray ray = Ray::Camera(float2(uv.x, -uv.y));
 
 	// Trace ray
@@ -203,74 +209,26 @@ void Main(uint3 id : SV_DispatchThreadID)
 		{
 			Material material = intersection.material;
 
-			// Make sure new ray does not intersect current object
+			// Add epsilon to sure new ray does not intersect current object
 			float3 position = intersection.position + intersection.normal * EPSILON;
-			float3 direction;
+            float3 direction = RandomHemisphere(intersection.normal, 1, state); // Sample new direction randomly
 
 			// Evaluate first term of the rendering equation
 			result += light * material.emission;
-
-			float specular = dot(material.specular, 1.0 / 3);
-			float diffuse = dot(material.albedo, 1.0 / 3);
-
-			float total = specular + diffuse;
-			specular /= total;
-			diffuse /= total;
+			light *= material.albedo;
 			
-			// Janky shadow code
-			float3 lightDirection = RandomHemisphere(normalize(float3(0.4, 1, 0.8)), 1600, seed + i);
-			Ray shadowRay = Ray::New(position, lightDirection);
-			Intersection shadowIntersection = Trace(shadowRay);
-
-			float3 lightColor = float3(0.4, 0.38, 0.32);
-
-			float random = Random(seed + i);
-			if (random < specular)
-			{
-				float shadow = 0;
-				if (material.roughness == 0) direction = reflect(ray.direction, intersection.normal);
-				else
-				{
-					float alpha = 2 / pow(material.roughness, 4) - 2;
-					float f = (alpha + 2) / (alpha + 1);
-
-					direction = RandomHemisphere(reflect(ray.direction, intersection.normal), alpha, seed + i);
-					light *= f;
-					
-					float3 r = reflect(lightDirection, intersection.normal);
-					float s = pow(saturate(dot(ray.direction, r)), alpha);
-
-					shadow = lightColor * s;
-					if (shadowIntersection.distance < 1.#INF) shadow = 0;
-				}
-
-				light *= material.specular / specular;
-				result += light * shadow;
-			}
-			else if (random < specular + diffuse)
-			{
-				float3 shadow = lightColor * dot(intersection.normal, lightDirection);
-				if (shadowIntersection.distance < 1.#INF) shadow = 0;
-
-				direction = RandomHemisphere(intersection.normal, 1, seed + i);
-				light *= material.albedo / diffuse;
-				
-				result += light * shadow;
-			}
-			else light = 0;
-			
-			ray = Ray::New(position, direction);
-
-			if (any(light)) continue;
-			else break;
-		}
-
-		// Sample the skybox
-		float theta = acos(ray.direction.y) / PI;
-		float phi = -0.5 * atan2(ray.direction.x, -ray.direction.z) / PI;
+            if (!any(light)) break;
+            ray = Ray::New(position, direction);
+        }
+		else
+        {
+			// Sample the skybox
+            float theta = acos(ray.direction.y) / PI;
+            float phi = -0.5 * atan2(ray.direction.x, -ray.direction.z) / PI;
 		
-		result += light * pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0), 2) * 1.8;
-		break;
+            result += light * pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0), 2).rgb * 1.8;
+            break;
+        }
 	}
 
 	// Average result with previous samples

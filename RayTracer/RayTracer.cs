@@ -5,12 +5,13 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using RayTracer.DirectX;
 
 using SharpDX;
-using SharpDX.Direct3D11;
-using SharpDX.WIC;
 
 namespace RayTracer;
+
+using SharpDX.Direct3D11;
 
 [StructLayout(LayoutKind.Sequential)]
 internal readonly struct Constants
@@ -59,19 +60,20 @@ internal readonly struct Sphere
 
 }
 
-internal class RayTracerRenderer : Renderer
+internal class RayTracerRenderer : ComputeRenderer
 {
 
     private readonly ConstantBuffer<Constants> buffer;
     private Constants constants;
 
 
-    public RayTracerRenderer(Window window) : base(window, "Shaders/RayTracer.hlsl")
+    public RayTracerRenderer(Window window, int width, int height) : base(window, width, height)
     {
-        using Texture2D skybox = TextureLoader.LoadFromFile(device, "skybox.jpg");
+        using ComputeShader shader = Compile("RayTracer.hlsl");
+        context.ComputeShader.Set(shader);
 
-        ShaderResourceView view = new(device, skybox);
-        context.ComputeShader.SetShaderResource(1, view);
+        using ShaderResourceTexture skybox = ShaderResourceTexture.FromFile(device, "skybox.jpg");
+        context.ComputeShader.SetShaderResource(1, skybox.View);
 
         // Create constant buffers
         buffer = new ConstantBuffer<Constants>(device);
@@ -95,25 +97,9 @@ internal class RayTracerRenderer : Renderer
             Color3 color = new(random.NextFloat(0, 1), random.NextFloat(0, 1), random.NextFloat(0, 1));
             Color3 albedo, specular, emission;
 
-            float r = random.NextFloat(0, 1);
-            if (r < 0.5)
-            {
-                albedo = color;
-                specular = new Vector3(0.04f, 0.04f, 0.04f);
-                emission = Vector3.Zero;
-            }
-            else if (r < 0.9)
-            {
-                albedo = Vector3.Zero;
-                specular = color;
-                emission = Vector3.Zero;
-            }
-            else
-            {
-                albedo = Vector3.Zero;
-                specular = Vector3.Zero;
-                emission = new Vector3(1.5f, 1.5f, 1.5f);
-            }
+            albedo = color;
+            specular = Vector3.Zero;
+            emission = Vector3.Zero;
 
             spheres.Add(new()
             {
@@ -129,7 +115,7 @@ internal class RayTracerRenderer : Renderer
         Skip:;
         }
 
-        using ShaderBuffer<Sphere> input = new(device, spheres.Count);
+        using ShaderResourceBuffer<Sphere> input = new(device, spheres.Count);
         context.ComputeShader.SetShaderResource(0, input.View);
 
         context.UpdateSubresource(spheres.ToArray(), input);
@@ -151,8 +137,10 @@ internal class RayTracerRenderer : Renderer
         };
     }
 
-    protected override void OnResize()
+    public override void Resize(int width, int height)
     {
+        base.Resize(width, height);
+
         sample = 0;
         Init();
     }
@@ -170,6 +158,7 @@ internal class RayTracerRenderer : Renderer
         constants = constants with { Sample = sample++ };
         context.UpdateSubresource(ref constants, buffer);
 
+        context.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
         base.Render();
     }
 

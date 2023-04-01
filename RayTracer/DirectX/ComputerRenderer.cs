@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
@@ -10,45 +12,11 @@ using SharpDX.D3DCompiler;
 using SharpDX.Direct3D;
 using SharpDX.DXGI;
 
-namespace RayTracer;
+namespace RayTracer.DirectX;
 
 using SharpDX.Direct3D11;
 
-internal class ShaderBuffer<T> : Buffer where T : unmanaged
-{
-
-    public ShaderResourceView View { get; }
-
-
-    public unsafe ShaderBuffer(Device device, int length) : base(device, new BufferDescription
-    {
-        SizeInBytes = sizeof(T) * length,
-        StructureByteStride = sizeof(T),
-        BindFlags = BindFlags.ShaderResource,
-        OptionFlags = ResourceOptionFlags.BufferStructured
-    }) =>
-        View = new ShaderResourceView(device, this);
-
-    public new void Dispose()
-    {
-        base.Dispose();
-        View.Dispose();
-    }
-
-}
-
-internal class ConstantBuffer<T> : Buffer where T : unmanaged
-{
-    
-    public unsafe ConstantBuffer(Device device) : base(device, new BufferDescription
-    {
-        SizeInBytes = ((sizeof(T) - 1) | 15) + 1, // Nearest multiple of 16 that is larger
-        BindFlags = BindFlags.ConstantBuffer
-    }) { }
-
-}
-
-internal abstract class Renderer : IDisposable
+internal abstract class ComputeRenderer : IDisposable
 {
 
     protected readonly Device device = new(DriverType.Hardware, DeviceCreationFlags.None);
@@ -60,12 +28,8 @@ internal abstract class Renderer : IDisposable
     protected int height;
 
 
-    protected unsafe Renderer(Window window, string path)
+    protected ComputeRenderer(Window window, int width, int height)
     {
-        FrameworkElement content = (FrameworkElement) window.Content;
-        width = (int) content.ActualWidth;
-        height = (int) content.ActualHeight;
-
         context = device.ImmediateContext;
 
         // Initialize swap chain
@@ -80,10 +44,9 @@ internal abstract class Renderer : IDisposable
             SampleDescription = new SampleDescription(1, 0)
         });
 
-        using CompilationResult result = ShaderBytecode.CompileFromFile(path, "Main", "cs_5_0");
-        using ComputeShader shader = new(device, result);
+        this.width = width;
+        this.height = height;
 
-        context.ComputeShader.Set(shader);
         BindViews();
     }
 
@@ -95,15 +58,13 @@ internal abstract class Renderer : IDisposable
         context.ComputeShader.SetUnorderedAccessView(0, output);
     }
 
-    public void Resize(int width, int height)
+    public virtual void Resize(int width, int height)
     {
         this.width = width;
         this.height = height;
 
         swapChain.ResizeBuffers(1, width, height, Format.R8G8B8A8_UNorm, SwapChainFlags.None);
         BindViews();
-
-        OnResize();
     }
 
     public void Dispose()
@@ -115,11 +76,44 @@ internal abstract class Renderer : IDisposable
     }
 
 
-    protected virtual void OnResize() { }
-    public virtual void Render()
+    protected ComputeShader Compile(string path)
     {
-        context.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
-        swapChain.Present(0, PresentFlags.None);
+        ShaderPreprocessor preprocessor = new(path);
+        string entry = preprocessor.Entry ?? "Main";
+
+        using CompilationResult result = ShaderBytecode.Compile(preprocessor.Source, entry, "cs_5_0");
+        return new ComputeShader(device, result);
+    }
+
+    public virtual void Render() => swapChain.Present(0, PresentFlags.None);
+
+}
+
+internal class ShaderPreprocessor
+{
+
+    public string Source { get; }
+    public string? Entry { get; } = null;
+
+
+    public ShaderPreprocessor(string path)
+    {
+        Source = File.ReadAllText("Shaders/" + path);
+        foreach (Match match in Regex.Matches(Source, "#include \"([\\w.\\/-]+)\""))
+        {
+            string include = match.Groups[1].Value;
+            ShaderPreprocessor preprocessor = new(include); // Process dependency
+
+            Source = Source.Replace(match.Value, preprocessor.Source);
+        }
+
+        // Find entry pragma if there is one
+        Match entry = Regex.Match(Source, "#pragma kernel (\\w+)");
+        if (entry.Success)
+        {
+            Entry = entry.Groups[1].Value;
+            Source = Source.Replace(entry.Value, "");
+        }
     }
 
 }
