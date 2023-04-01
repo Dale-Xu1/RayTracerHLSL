@@ -90,6 +90,8 @@ Intersection IntersectGroundPlane(Ray ray)
     return intersection;
 }
 
+// TODO: Triangle intersection
+
 Intersection IntersectSphere(Ray ray, in Sphere sphere)
 {
     Intersection intersection = Intersection::New();

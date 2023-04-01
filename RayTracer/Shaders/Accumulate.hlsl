@@ -33,8 +33,7 @@ float3 HillACES(float3 color)
     
     color = RRTAndODT(color);
     color = mul(ACESOutput, color);
-
-    // Clamp to 0 and 1
+    
     return saturate(color);
 }
 
