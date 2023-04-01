@@ -1,5 +1,7 @@
 ﻿#include "Object.hlsl"
 
+static const uint LIGHT_BOUNCES = 8;
+
 static const float PI = 3.1415926535;
 static const float EPSILON = 0.001;
 
@@ -13,7 +15,7 @@ float4x4 InverseProjection;
 
 uint Sample;
 
-uint NextState(uint state) { return state * 747796405 + 2891336453; }
+static uint NextState(uint state) { return state * 747796405 + 2891336453; }
 float Random(inout uint state)
 {
 	state = NextState(state);
@@ -45,7 +47,6 @@ float3 RandomHemisphere(float3 normal, float alpha, inout uint state)
     return mul(direction, transform);
 }
 
-
 Intersection Trace(Ray ray)
 {
 	Intersection min = IntersectGroundPlane(ray);
@@ -63,12 +64,27 @@ Intersection Trace(Ray ray)
 	return min;
 }
 
+Ray BRDF(Ray ray, Intersection intersection, inout uint state)
+{
+	float3 normal = intersection.normal;
+	
+	// Add epsilon to sure new ray does not intersect current object
+    float3 position = intersection.position + normal * EPSILON;
+    float3 direction = RandomHemisphere(normal, 1, state); // Sample new direction randomly
+	
+	// TODO: Specular materials
+	// float3 direction = reflect(ray.direction, normal);
+	
+    return Ray::New(position, direction);
+}
+
+
 Ray CameraRay(float2 uv)
 {
-		// Transform camera origin into world space
+	// Transform camera origin into world space
     float3 position = mul(CameraToWorld, float4(0, 0, 0, 1)).xyz;
 
-		// Invert perspctive projection
+	// Invert perspctive projection
     float3 direction = mul(InverseProjection, float4(uv, 0, 1)).xyz;
     direction = mul(CameraToWorld, float4(direction, 0)).xyz; // Transform from camera to world space
 
@@ -76,6 +92,14 @@ Ray CameraRay(float2 uv)
 }
 
 SamplerState Sampler;
+float3 SampleSkybox(float3 direction)
+{
+	// Sample skybox
+    float theta = acos(direction.y) / PI;
+    float phi = -0.5 * atan2(direction.x, -direction.z) / PI;
+	
+    return pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0).rgb, 3) * 4;
+}
 
 [numthreads(8, 8, 1)]
 void Main(uint3 id : SV_DispatchThreadID)
@@ -94,31 +118,24 @@ void Main(uint3 id : SV_DispatchThreadID)
 
 	// Trace ray
 	float3 result = 0, light = 1;
-	for (uint i = 0; i < 8; i++)
+    for (uint i = 0; i < LIGHT_BOUNCES; i++)
 	{
 		Intersection intersection = Trace(ray);
 		if (intersection.distance < 1.#INF)
 		{
 			Material material = intersection.material;
-
-			// Add epsilon to sure new ray does not intersect current object
-			float3 position = intersection.position + intersection.normal * EPSILON;
-            float3 direction = RandomHemisphere(intersection.normal, 1, state); // Sample new direction randomly
-
+			
 			// Evaluate first term of the rendering equation
 			result += light * material.emission;
 			light *= material.albedo;
 			
             if (!any(light)) break;
-            ray = Ray::New(position, direction);
+            ray = BRDF(ray, intersection, state);
         }
 		else
         {
-			// Sample the skybox
-            float theta = acos(ray.direction.y) / PI;
-            float phi = -0.5 * atan2(ray.direction.x, -ray.direction.z) / PI;
-		
-            result += light * pow(Skybox.SampleLevel(Sampler, (float2(phi, theta) + 1) % 1, 0).rgb, 2) * 2;
+			// Sample skybox
+            result += light * SampleSkybox(ray.direction);
             break;
         }
 	}

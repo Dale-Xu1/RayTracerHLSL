@@ -95,7 +95,7 @@ internal class RayTracerRenderer : ComputeRenderer
     private void LoadSceneData()
     {
         // Generate random spheres
-        Random random = new(0);
+        Random random = new(3);
         List<Sphere> spheres = new();
 
         for (int i = 0; i < 200; i++)
@@ -115,6 +115,13 @@ internal class RayTracerRenderer : ComputeRenderer
             albedo = color;
             specular = Vector3.Zero;
             emission = Vector3.Zero;
+
+            if (i == 2)
+            {
+                albedo = Vector3.Zero;
+                specular = Vector3.Zero;
+                emission = Vector3.One * 50;
+            }
 
             spheres.Add(new()
             {
