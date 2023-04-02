@@ -104,6 +104,8 @@ internal class RayTracerRenderer : ComputeRenderer
     {
         // Generate random spheres
         Random random = new(3);
+
+        List<Triangle> triangles = new();
         List<Sphere> spheres = new();
 
         for (int i = 0; i < 200; i++)
@@ -121,20 +123,21 @@ internal class RayTracerRenderer : ComputeRenderer
             Color3 albedo, specular, emission;
 
             albedo = color;
-            specular = Vector3.Zero;
-            emission = Vector3.Zero;
+            specular = Color3.Black;
+            emission = Color3.Black;
 
             if (i == 2)
             {
-                albedo = Vector3.Zero;
-                specular = Vector3.Zero;
-                emission = Vector3.One * 100;
+                albedo = Color3.Black;
+                specular = Color3.Black;
+                emission = Color3.White * 500;
             }
 
-            spheres.Add(new()
+            spheres.Add(new Sphere
             {
-                Position = position, Radius = radius,
-                Material = new()
+                Position = position,
+                Radius = radius,
+                Material = new Material
                 {
                     Albedo = albedo, Specular = specular,
                     Roughness = random.NextFloat(0, 0.6f),
@@ -145,10 +148,28 @@ internal class RayTracerRenderer : ComputeRenderer
         Skip:;
         }
 
-        using ShaderResourceBuffer<Sphere> input = new(device, spheres.Count);
-        context.ComputeShader.SetShaderResource(0, input.View);
+        triangles.Add(new Triangle
+        {
+            A = new Vector3(0, 0, 0),
+            B = new Vector3(0, 80, 80),
+            C = new Vector3(0, 0, 80),
+            Material = new Material
+            {
+                Albedo = new Color3(0.6f, 0.6f, 0.6f),
+                Specular = Color3.Black,
+                Emission = Color3.Black,
+                Roughness = 0
+            }
+        });
 
-        context.UpdateSubresource(spheres.ToArray(), input);
+        using ShaderResourceBuffer<Triangle> triangleBuffer = new(device, spheres.Count);
+        context.ComputeShader.SetShaderResource(0, triangleBuffer.View);
+
+        using ShaderResourceBuffer<Sphere> sphereBuffer = new(device, spheres.Count);
+        context.ComputeShader.SetShaderResource(1, sphereBuffer.View);
+
+        context.UpdateSubresource(triangles.ToArray(), triangleBuffer);
+        context.UpdateSubresource(spheres.ToArray(), sphereBuffer);
     }
 
     private void Init()
@@ -164,7 +185,7 @@ internal class RayTracerRenderer : ComputeRenderer
         Camera camera = new()
         {
             ToWorld = toWorld, InverseProjection = projection,
-            Aperture = 2,
+            Aperture = 1,
             Distance = Vector3.Distance(position, target)
         };
         constants = new Constants { Camera = camera };

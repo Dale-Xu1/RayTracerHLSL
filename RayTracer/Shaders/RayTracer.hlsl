@@ -1,9 +1,7 @@
 ﻿#include "Object.hlsl"
 
 static const uint LIGHT_BOUNCES = 8;
-
 static const float PI = 3.1415926535;
-static const float EPSILON = 0.001;
 
 struct CameraParams
 {
@@ -14,7 +12,9 @@ struct CameraParams
     float distance;
 };
 
-StructuredBuffer<Sphere> Spheres : register(t0);
+StructuredBuffer<Triangle> Triangles : register(t0);
+StructuredBuffer<Sphere> Spheres : register(t1);
+
 RWTexture2D<float4> Render : register(u1);
 
 uint Sample;
@@ -62,15 +62,21 @@ float3 RandomHemisphere(float3 normal, float alpha, inout uint state)
 
 Intersection Trace(Ray ray)
 {
-	Intersection min = IntersectGroundPlane(ray);
-
+	Intersection min = Intersection::GroundPlane(ray);
 	uint length, stride;
-	Spheres.GetDimensions(length, stride);
-
+	
 	// Find closest intersection
-	for (uint i = 0; i < length; i++)
+    Triangles.GetDimensions(length, stride);
+    for (uint i = 0; i < length; i++)
+    {
+        Intersection intersection = Triangles[i].Intersect(ray);
+        if (intersection.distance < min.distance) min = intersection;
+    }
+	
+    Spheres.GetDimensions(length, stride);
+	for (i = 0; i < length; i++)
 	{
-		Intersection intersection = IntersectSphere(ray, Spheres[i]);
+		Intersection intersection = Spheres[i].Intersect(ray);
 		if (intersection.distance < min.distance) min = intersection;
 	}
 
@@ -101,7 +107,7 @@ Ray CameraRay(float2 uv, inout uint state)
 	// Invert perspctive projection
     float3 direction = mul(Camera.inverseProjection, float4(uv, 0, 1)).xyz;
 	
-    direction = normalize(direction) * Camera.distance - offset; // Reorient direction on focal plane
+    direction = Camera.distance * direction - offset; // Reorient direction on focal plane
     direction = mul(Camera.toWorld, float4(direction, 0)).xyz; // Transform from camera to world space
 
     return Ray::New(position, normalize(direction));
