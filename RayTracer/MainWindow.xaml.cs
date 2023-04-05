@@ -18,15 +18,13 @@ namespace RayTracer;
 public partial class MainWindow : Window
 {
 
-    private readonly int width = 1000;
-    private readonly int height = 600;
+    private readonly int width = 800;
+    private readonly int height = 450;
 
     public MainWindow()
     {
-        double dpi = 1.5;
-
-        Width = width / dpi + 2 * SystemParameters.ResizeFrameVerticalBorderWidth;
-        Height = height / dpi + SystemParameters.CaptionHeight +
+        Width = width + 2 * SystemParameters.ResizeFrameVerticalBorderWidth;
+        Height = height + SystemParameters.CaptionHeight +
             2 * SystemParameters.ResizeFrameHorizontalBorderHeight;
 
         InitializeComponent();

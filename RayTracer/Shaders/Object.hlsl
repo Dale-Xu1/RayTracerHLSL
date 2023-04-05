@@ -74,7 +74,7 @@ struct Intersection
         intersection.position = ray.position + t * ray.direction;
         intersection.normal = float3(0, 1, 0);
 
-        intersection.material = Material::New(0, 1, 1, 0.2);
+        intersection.material = Material::New(1, 1, 0.8, 0.2);
         return intersection;
     }
 };
