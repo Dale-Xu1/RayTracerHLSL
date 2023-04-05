@@ -3,21 +3,23 @@
 struct Material
 {
     float3 albedo;
-
     float3 specular;
-    float roughness;
-
     float3 emission;
+    
+    float roughness;
+    float t;
 	
 
-    static Material New(float3 albedo, float3 specular, float roughness, float3 emission = 0)
+    static Material New(float3 albedo, float3 specular, float t = 0, float roughness = 0, float3 emission = 0)
     {
         Material material;
 
         material.albedo = albedo;
         material.specular = specular;
-        material.roughness = roughness;
         material.emission = emission;
+        
+        material.roughness = roughness;
+        material.t = t;
 
         return material;
     }
@@ -27,14 +29,17 @@ struct Ray
 {
     float3 position;
     float3 direction;
+    
+    float3 light;
 
 
-    static Ray New(float3 position, float3 direction)
+    static Ray New(float3 position, float3 direction, float3 light = 1)
     {
         Ray ray;
 
         ray.position = position;
         ray.direction = direction;
+        ray.light = light;
 
         return ray;
     }
@@ -69,7 +74,7 @@ struct Intersection
         intersection.position = ray.position + t * ray.direction;
         intersection.normal = float3(0, 1, 0);
 
-        intersection.material = Material::New(1, 0, 0);
+        intersection.material = Material::New(0, 1, 1, 0.2);
         return intersection;
     }
 };

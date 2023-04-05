@@ -10,4 +10,4 @@ It also supports depth of field and HDR through the Hill ACES tone mapping curve
 
 # Example
 
-![](https://user-images.githubusercontent.com/69087617/229324023-7cdbe599-c6ac-4beb-b191-cb16cee16e07.png)
+![](https://user-images.githubusercontent.com/69087617/230123758-4e7d90eb-aac5-4f2f-ae2c-ebc039652385.png)

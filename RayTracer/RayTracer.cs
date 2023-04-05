@@ -42,11 +42,11 @@ internal readonly struct Material
 {
 
     public Color3 Albedo { get; init; }
-
     public Color3 Specular { get; init; }
-    public float Roughness { get; init; }
-
     public Color3 Emission { get; init; }
+
+    public float Roughness { get; init; }
+    public float T { get; init; }
 
 }
 
@@ -103,15 +103,15 @@ internal class RayTracerRenderer : ComputeRenderer
     private void LoadSceneData()
     {
         // Generate random spheres
-        Random random = new(3);
+        Random random = new(1);
 
-        List<Triangle> triangles = new();
+        //List<Triangle> triangles = new();
         List<Sphere> spheres = new();
 
         for (int i = 0; i < 200; i++)
         {
-            float radius = random.NextFloat(1, 10);
-            Vector3 position = new(random.NextFloat(-50, 50), radius, random.NextFloat(-50, 50));
+            float radius = random.NextFloat(1, 6);
+            Vector3 position = new(random.NextFloat(-60, 60), radius, random.NextFloat(-60, 60));
 
             foreach (Sphere sphere in spheres)
             {
@@ -119,14 +119,32 @@ internal class RayTracerRenderer : ComputeRenderer
                 if ((sphere.Position - position).LengthSquared() < min * min) goto Skip;
             }
 
-            Color3 color = new(random.NextFloat(0, 1), random.NextFloat(0, 1), random.NextFloat(0, 1));
+            Color3 color = new(random.NextFloat(0.2f, 1), random.NextFloat(0.2f, 1), random.NextFloat(0.2f, 1));
             Color3 albedo, specular, emission;
+            float t = 0;
 
-            albedo = color;
-            specular = Color3.Black;
-            emission = Color3.Black;
-
-            if (i == 2)
+            double r = random.NextDouble();
+            if (r < 0.6)
+            {
+                albedo = color;
+                specular = Color3.White * 0.8f;
+                emission = Color3.Black;
+                t = 0.2f;
+            }
+            else if (r < 0.8)
+            {
+                albedo = color;
+                specular = Color3.Black;
+                emission = Color3.Black;
+            }
+            else if (r < 0.9)
+            {
+                albedo = Color3.Black;
+                specular = color;
+                emission = Color3.Black;
+                t = 1;
+            }
+            else
             {
                 albedo = Color3.Black;
                 specular = Color3.Black;
@@ -140,27 +158,28 @@ internal class RayTracerRenderer : ComputeRenderer
                 Material = new Material
                 {
                     Albedo = albedo, Specular = specular,
+                    Emission = emission,
                     Roughness = random.NextFloat(0, 0.6f),
-                    Emission = emission
+                    T = t
                 }
             });
 
         Skip:;
         }
 
-        triangles.Add(new Triangle
-        {
-            A = new Vector3(0, 0, 0),
-            B = new Vector3(0, 80, 80),
-            C = new Vector3(0, 0, 80),
-            Material = new Material
-            {
-                Albedo = new Color3(0.6f, 0.6f, 0.6f),
-                Specular = Color3.Black,
-                Emission = Color3.Black,
-                Roughness = 0
-            }
-        });
+        //triangles.Add(new Triangle
+        //{
+        //    A = new Vector3(0, 0, 0),
+        //    B = new Vector3(0, 80, 80),
+        //    C = new Vector3(0, 0, 80),
+        //    Material = new Material
+        //    {
+        //        Albedo = new Color3(0.6f, 0.6f, 0.6f),
+        //        Specular = Color3.Black,
+        //        Emission = Color3.Black,
+        //        Roughness = 0
+        //    }
+        //});
 
         using ShaderResourceBuffer<Triangle> triangleBuffer = new(device, spheres.Count);
         context.ComputeShader.SetShaderResource(0, triangleBuffer.View);
@@ -168,13 +187,13 @@ internal class RayTracerRenderer : ComputeRenderer
         using ShaderResourceBuffer<Sphere> sphereBuffer = new(device, spheres.Count);
         context.ComputeShader.SetShaderResource(1, sphereBuffer.View);
 
-        context.UpdateSubresource(triangles.ToArray(), triangleBuffer);
+        //context.UpdateSubresource(triangles.ToArray(), triangleBuffer);
         context.UpdateSubresource(spheres.ToArray(), sphereBuffer);
     }
 
     private void Init()
     {
-        Vector3 position = new(80, 30, -80), target = new(0, 5, 0);
+        Vector3 position = new(80, 25, -80), target = new(0, 0, 0);
 
         Matrix toWorld = Matrix.LookAtLH(position, target, Vector3.Up);
         Matrix projection = Matrix.PerspectiveFovLH((float) Math.PI / 4, (float) width / height, 0.1f, 100);
@@ -185,7 +204,7 @@ internal class RayTracerRenderer : ComputeRenderer
         Camera camera = new()
         {
             ToWorld = toWorld, InverseProjection = projection,
-            Aperture = 1,
+            Aperture = 2,
             Distance = Vector3.Distance(position, target)
         };
         constants = new Constants { Camera = camera };
